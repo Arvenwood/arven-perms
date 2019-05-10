@@ -1,22 +1,17 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     java
     kotlin("jvm") version "1.3.21"
     kotlin("kapt") version "1.3.21"
-
-    id("com.github.johnrengelman.shadow") version "4.0.4"
 }
 
-val implementation by project.configurations
-implementation.isCanBeResolved = true
-
 group = "arven"
-version = "1.0-SNAPSHOT"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
+    mavenLocal()
     jcenter()
     maven {
         setUrl("https://jitpack.io")
@@ -30,27 +25,24 @@ repositories {
 }
 
 dependencies {
-    implementation(kotlin("stdlib-jdk8"))
-    implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.1.1")
+    compileOnly(kotlin("stdlib-jdk8"))
+    compileOnly(kotlin("reflect"))
+    compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.1.1")
 
-    kapt("org.spongepowered:spongeapi:7.2.0-SNAPSHOT")
-    compileOnly("org.spongepowered:spongeapi:7.2.0-SNAPSHOT")
+    kapt("org.spongepowered:spongeapi:7.1.0")
+    compileOnly("org.spongepowered:spongeapi:7.1.0")
 
-    // Annotation Command System
-    implementation("com.github.TheFrontier:SKC:f77a2607ef")
+    // Command Tree System
+    compileOnly("com.github.TheFrontier:SKPC:af08cf3870")
 
     // Config System
-    implementation("com.github.TheFrontier:SKD:094ab59a02")
+    compileOnly("com.github.TheFrontier:SKD:094ab59a02")
 
     // Sponge Platform extension methods
-    implementation("com.github.TheFrontier:SKE:3917897ad3")
+    compileOnly("com.github.TheFrontier:SKE:3917897ad3")
 
     // Database ORM
-    implementation("org.jetbrains.exposed:exposed:0.13.2")
-
-    // Database migrations
-    implementation("org.flywaydb:flyway-core:5.2.4")
+    compileOnly("org.jetbrains.exposed:exposed:0.13.6")
 }
 
 configure<JavaPluginConvention> {
@@ -58,14 +50,4 @@ configure<JavaPluginConvention> {
 }
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
-}
-
-tasks.withType<ShadowJar> {
-    this.classifier = "dist"
-    this.configurations = listOf(implementation)
-
-    dependencies {
-        exclude(dependency("org.slf4j:slf4j-api:.*"))
-        exclude(dependency("com.h2database:h2:.*"))
-    }
 }

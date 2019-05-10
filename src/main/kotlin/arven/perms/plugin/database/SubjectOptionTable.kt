@@ -8,11 +8,11 @@ import org.jetbrains.exposed.sql.ReferenceOption
 
 object SubjectOptionTable : LongIdTable("subject_options") {
     val subject = reference("subject", SubjectTable, onDelete = ReferenceOption.CASCADE).index()
-    val option = varchar("key", 255).index()
+    val key = varchar("key", 255).index()
     val value = text("value")
 
     init {
-        uniqueIndex(subject, option)
+        uniqueIndex(subject, key)
     }
 }
 
@@ -21,7 +21,7 @@ class SubjectOptionEntity(id: EntityID<Long>) : LongEntity(id) {
 
     var subject by SubjectEntity referencedOn SubjectOptionTable.subject
 
-    var key by SubjectOptionTable.option
+    var key by SubjectOptionTable.key
 
     var value by SubjectOptionTable.value
 }

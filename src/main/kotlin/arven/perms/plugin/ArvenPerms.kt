@@ -1,14 +1,10 @@
 package arven.perms.plugin
 
-import arven.perms.plugin.command.CommandAP
-import arven.perms.plugin.command.match.databaseEntities
+import arven.perms.plugin.command.APCommand
 import arven.perms.plugin.database.*
 import arven.perms.plugin.listener.ConnectionListener
 import arven.perms.plugin.service.ArvenPermissionService
 import com.google.inject.Inject
-import frontier.skc.KClassCallable
-import frontier.skc.match.SKCMatcher
-import frontier.skc.value.*
 import frontier.ske.eventManager
 import frontier.ske.scheduler
 import frontier.ske.service.require
@@ -22,20 +18,18 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.Logger
 import org.spongepowered.api.event.Listener
 import org.spongepowered.api.event.game.state.GameInitializationEvent
+import org.spongepowered.api.plugin.Dependency
 import org.spongepowered.api.plugin.Plugin
 import org.spongepowered.api.service.permission.PermissionService
 import org.spongepowered.api.service.sql.SqlService
 
 @Plugin(
-    id = "arven-perms", name = "Arven Perms", version = "0.0.0",
+    id = "arven-perms", name = "Arven Perms", version = "0.1.0",
     authors = ["doot"], url = "https://github.com/Arvenwood/arven-perms",
-    description = "A Permissions plugin."
+    description = "A Permissions plugin.",
+    dependencies = [Dependency(id = "arven-core", version = "1.0.0")]
 )
 class ArvenPerms @Inject constructor(logger: Logger) {
-
-    init {
-        LOGGER = logger
-    }
 
     companion object {
         lateinit var SYNC: CoroutineDispatcher
@@ -44,6 +38,10 @@ class ArvenPerms @Inject constructor(logger: Logger) {
         lateinit var DB: Database
 
         lateinit var LOGGER: Logger
+    }
+
+    init {
+        LOGGER = logger
     }
 
     @Listener
@@ -92,15 +90,6 @@ class ArvenPerms @Inject constructor(logger: Logger) {
     private fun registerCommands() {
         LOGGER.info("Registering commands...")
 
-        val matcher = SKCMatcher().apply {
-            this.sources()
-            this.player()
-            this.string()
-            this.int()
-            this.bool()
-            this.databaseEntities()
-        }
-
-        KClassCallable<CommandAP>(matcher).register(this)
+        APCommand.register(this)
     }
 }

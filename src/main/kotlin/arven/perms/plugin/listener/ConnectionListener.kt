@@ -10,18 +10,18 @@ import org.spongepowered.api.event.Listener
 import org.spongepowered.api.event.Order
 import org.spongepowered.api.event.filter.Getter
 import org.spongepowered.api.event.network.ClientConnectionEvent
-import org.spongepowered.api.service.permission.PermissionService
+import org.spongepowered.api.service.permission.PermissionService.SUBJECTS_USER
 
 class ConnectionListener {
 
     @Listener(order = Order.PRE)
     fun onJoin(event: ClientConnectionEvent.Join, @Getter("getTargetEntity") player: Player) {
         transaction(DB) {
-            val collectionEntity = SubjectCollectionEntity.getOrCreate(PermissionService.SUBJECTS_USER)
+            val collectionEntity = SubjectCollectionEntity[SUBJECTS_USER]
             val entity = SubjectEntity.find(collectionEntity.id, player.uniqueId.toString())
 
             if (entity == null) {
-                LOGGER.info("Indexing ${player.name} (${player.uniqueId}) into the database...")
+                LOGGER.info("Inserting ${player.name} (${player.uniqueId}) into the users table...")
 
                 SubjectEntity.new {
                     this.identifier = player.uniqueId.toString()

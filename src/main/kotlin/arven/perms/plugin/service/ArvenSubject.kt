@@ -2,12 +2,13 @@ package arven.perms.plugin.service
 
 import arven.perms.plugin.ArvenPerms.Companion.DB
 import arven.perms.plugin.database.*
-import arven.perms.plugin.util.future
 import arven.perms.plugin.util.toBoolean
 import arven.perms.plugin.util.toTristate
 import frontier.ske.java.lang.toUUID
 import frontier.ske.java.util.wrap
 import frontier.ske.server
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.dao.EntityID
 import org.jetbrains.exposed.sql.SizedCollection
 import org.jetbrains.exposed.sql.and
@@ -54,35 +55,37 @@ class ArvenSubject(
 
     override fun getPermissionValue(ctx: Set<Context>, permission: String): Tristate =
         transaction(DB) {
-            SubjectPermissionEntity.getValueDeep(subjectEntity, permission)?.third.toTristate()
+            subjectEntity.getPermission(permission)?.third.toTristate()
         }
 
     override fun setPermission(ctx: Set<Context>, permission: String, value: Tristate): CompletableFuture<Boolean> =
-        transaction(DB) {
-            val entity = SubjectPermissionEntity.find {
-                (SubjectPermissionTable.subject eq id) and (SubjectPermissionTable.permission eq permission)
-            }.singleOrNull()
-            val boolValue = value.toBoolean()
+        GlobalScope.future {
+            transaction(DB) {
+                val entity = SubjectPermissionEntity.find {
+                    (SubjectPermissionTable.subject eq id) and (SubjectPermissionTable.permission eq permission)
+                }.singleOrNull()
+                val boolValue = value.toBoolean()
 
-            when {
-                entity == null && boolValue != null -> {
-                    SubjectPermissionEntity.new {
-                        this.subject = subjectEntity
-                        this.permission = permission
-                        this.value = boolValue
+                when {
+                    entity == null && boolValue != null -> {
+                        SubjectPermissionEntity.new {
+                            this.subject = subjectEntity
+                            this.permission = permission
+                            this.value = boolValue
+                        }
+                        true
                     }
-                    true
+                    entity != null && boolValue != null -> {
+                        entity.value = boolValue
+                        true
+                    }
+                    entity != null && boolValue == null -> {
+                        entity.delete()
+                        true
+                    }
+                    else                                -> false
                 }
-                entity != null && boolValue != null -> {
-                    entity.value = boolValue
-                    true
-                }
-                entity != null && boolValue == null -> {
-                    entity.delete()
-                    true
-                }
-                else                                -> false
-            }.future
+            }
         }
 
     override fun getPermissions(ctx: Set<Context>): Map<String, Boolean> =
@@ -106,11 +109,13 @@ class ArvenSubject(
     }
 
     override fun clearPermissions(ctx: Set<Context>): CompletableFuture<Boolean> =
-        transaction(DB) {
-            SubjectPermissionTable.deleteWhere {
-                (SubjectPermissionTable.subject eq id)
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectPermissionTable.deleteWhere {
+                    (SubjectPermissionTable.subject eq id)
+                }
+                true
             }
-            CompletableFuture.completedFuture(true)
         }
 
     override fun clearPermissions(): CompletableFuture<Boolean> = clearPermissions(emptySet())
@@ -125,26 +130,31 @@ class ArvenSubject(
         parents.any { it.id == parentEntity.id }
     }
 
-    override fun addParent(ctx: Set<Context>, parent: SubjectReference): CompletableFuture<Boolean> = transaction(DB) {
-        val parentEntity = parent.toEntity() ?: return@transaction false.future
-        val parents = subjectEntity.parents
-        if (parentEntity !in parents) {
-            subjectEntity.parents = SizedCollection(parents + parentEntity)
-            true.future
-        } else {
-            false.future
+    override fun addParent(ctx: Set<Context>, parent: SubjectReference): CompletableFuture<Boolean> =
+        GlobalScope.future {
+            transaction(DB) {
+                val parentEntity = parent.toEntity() ?: return@transaction false
+                val parents = subjectEntity.parents
+                if (parentEntity !in parents) {
+                    subjectEntity.parents = SizedCollection(parents + parentEntity)
+                    true
+                } else {
+                    false
+                }
+            }
         }
-    }
 
     override fun removeParent(ctx: Set<Context>, parent: SubjectReference): CompletableFuture<Boolean> =
-        transaction(DB) {
-            val parentEntity = parent.toEntity() ?: return@transaction false.future
-            val parents = subjectEntity.parents
-            if (parentEntity in parents) {
-                subjectEntity.parents = SizedCollection(parents - parentEntity)
-                true.future
-            } else {
-                false.future
+        GlobalScope.future {
+            transaction(DB) {
+                val parentEntity = parent.toEntity() ?: return@transaction false
+                val parents = subjectEntity.parents
+                if (parentEntity in parents) {
+                    subjectEntity.parents = SizedCollection(parents - parentEntity)
+                    true
+                } else {
+                    false
+                }
             }
         }
 
@@ -162,11 +172,13 @@ class ArvenSubject(
     }
 
     override fun clearParents(ctx: Set<Context>): CompletableFuture<Boolean> =
-        transaction(DB) {
-            SubjectParentTable.deleteWhere {
-                (SubjectParentTable.child eq id)
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectParentTable.deleteWhere {
+                    (SubjectParentTable.child eq id)
+                }
+                true
             }
-            CompletableFuture.completedFuture(true)
         }
 
     override fun clearParents(): CompletableFuture<Boolean> = clearParents(emptySet())
@@ -178,35 +190,37 @@ class ArvenSubject(
     override fun getOption(ctx: Set<Context>, key: String): Optional<String> =
         transaction(DB) {
             SubjectOptionEntity.find {
-                (SubjectOptionTable.subject eq id) and (SubjectOptionTable.option eq key)
+                (SubjectOptionTable.subject eq id) and (SubjectOptionTable.key eq key)
             }.singleOrNull()?.value.wrap()
         }
 
     override fun setOption(ctx: Set<Context>, key: String, value: String?): CompletableFuture<Boolean> =
-        transaction(DB) {
-            val entity = SubjectOptionEntity.find {
-                (SubjectOptionTable.subject eq id) and (SubjectOptionTable.option eq key)
-            }.singleOrNull()
+        GlobalScope.future {
+            transaction(DB) {
+                val entity = SubjectOptionEntity.find {
+                    (SubjectOptionTable.subject eq id) and (SubjectOptionTable.key eq key)
+                }.singleOrNull()
 
-            when {
-                entity == null && value != null -> {
-                    SubjectOptionEntity.new {
-                        this.subject = subjectEntity
-                        this.key = key
-                        this.value = value
+                when {
+                    entity == null && value != null -> {
+                        SubjectOptionEntity.new {
+                            this.subject = subjectEntity
+                            this.key = key
+                            this.value = value
+                        }
+                        true
                     }
-                    true
+                    entity != null && value != null -> {
+                        entity.value = value
+                        true
+                    }
+                    entity != null && value == null -> {
+                        entity.delete()
+                        true
+                    }
+                    else                            -> false
                 }
-                entity != null && value != null -> {
-                    entity.value = value
-                    true
-                }
-                entity != null && value == null -> {
-                    entity.delete()
-                    true
-                }
-                else                            -> false
-            }.future
+            }
         }
 
     override fun getOptions(ctx: Set<Context>): Map<String, String> =
@@ -230,11 +244,13 @@ class ArvenSubject(
     }
 
     override fun clearOptions(ctx: Set<Context>): CompletableFuture<Boolean> =
-        transaction(DB) {
-            SubjectOptionTable.deleteWhere {
-                (SubjectOptionTable.subject eq id)
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectOptionTable.deleteWhere {
+                    (SubjectOptionTable.subject eq id)
+                }
+                true
             }
-            CompletableFuture.completedFuture(true)
         }
 
     override fun clearOptions(): CompletableFuture<Boolean> = clearOptions(emptySet())

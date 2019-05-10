@@ -2,10 +2,11 @@ package arven.perms.plugin.service
 
 import arven.perms.plugin.ArvenPerms.Companion.DB
 import arven.perms.plugin.database.*
-import arven.perms.plugin.util.future
 import arven.perms.plugin.util.isNotEmpty
 import com.google.common.base.Predicates
 import frontier.ske.java.util.wrap
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.dao.EntityID
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
@@ -36,26 +37,28 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
 
     override fun getAllWithPermission(ctx: Set<Context>,
                                       permission: String): CompletableFuture<Map<SubjectReference, Boolean>> =
-        transaction(DB) {
-            val map = hashMapOf<SubjectReference, Boolean>()
+        GlobalScope.future {
+            transaction(DB) {
+                val map = hashMapOf<SubjectReference, Boolean>()
 
-            val rows = SubjectTable.innerJoin(SubjectCollectionTable).innerJoin(SubjectPermissionTable)
-                .slice(SubjectTable.identifier, SubjectCollectionTable.identifier, SubjectPermissionTable.value)
-                .select {
-                    (SubjectTable.collection eq id) and
-                            (SubjectTable.id eq SubjectPermissionTable.subject) and
-                            (SubjectPermissionTable.permission eq permission)
+                val rows = SubjectTable.innerJoin(SubjectCollectionTable).innerJoin(SubjectPermissionTable)
+                    .slice(SubjectTable.identifier, SubjectCollectionTable.identifier, SubjectPermissionTable.value)
+                    .select {
+                        (SubjectTable.collection eq id) and
+                                (SubjectTable.id eq SubjectPermissionTable.subject) and
+                                (SubjectPermissionTable.permission eq permission)
+                    }
+
+                for (row in rows) {
+                    val reference = ArvenSubjectReference(
+                        row[SubjectCollectionTable.identifier],
+                        row[SubjectTable.identifier]
+                    )
+                    map[reference] = row[SubjectPermissionTable.value]
                 }
 
-            for (row in rows) {
-                val reference = ArvenSubjectReference(
-                    row[SubjectCollectionTable.identifier],
-                    row[SubjectTable.identifier]
-                )
-                map[reference] = row[SubjectPermissionTable.value]
+                map
             }
-
-            map.future
         }
 
     override fun getLoadedWithPermission(permission: String): Map<Subject, Boolean> =
@@ -84,13 +87,13 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
             map
         }
 
-    override fun hasSubject(identifier: String): CompletableFuture<Boolean> =
+    override fun hasSubject(identifier: String): CompletableFuture<Boolean> = GlobalScope.future {
         transaction(DB) {
             SubjectTable
                 .select { (SubjectTable.collection eq id) and (SubjectTable.identifier eq identifier) }
                 .isNotEmpty
-                .future
         }
+    }
 
     override fun getSubject(identifier: String): Optional<Subject> =
         transaction(DB) {
@@ -99,11 +102,11 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
                 .wrap()
         }
 
-    override fun loadSubject(identifier: String): CompletableFuture<Subject> {
-        return getOrCreateSubject(identifier).future
+    override fun loadSubject(identifier: String): CompletableFuture<Subject> = GlobalScope.future {
+        getOrCreateSubject(identifier)
     }
 
-    override fun loadSubjects(identifiers: Set<String>): CompletableFuture<Map<String, Subject>> =
+    override fun loadSubjects(identifiers: Set<String>): CompletableFuture<Map<String, Subject>> = GlobalScope.future {
         transaction(DB) {
             val map = hashMapOf<String, Subject>()
 
@@ -111,8 +114,9 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
                 map[identifier] = getOrCreateSubject(identifier)
             }
 
-            map.future
+            map
         }
+    }
 
     override fun getLoadedSubjects(): Collection<Subject> =
         transaction(DB) {
@@ -121,14 +125,14 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
                 .map { ArvenSubject(this@ArvenSubjectCollection, it.id, it.identifier) }
         }
 
-    override fun getAllIdentifiers(): CompletableFuture<Set<String>> =
+    override fun getAllIdentifiers(): CompletableFuture<Set<String>> = GlobalScope.future {
         transaction(DB) {
             SubjectTable
                 .slice(SubjectTable.identifier)
                 .select { SubjectTable.collection eq id }
                 .mapTo(HashSet()) { it[SubjectTable.identifier] }
-                .future
         }
+    }
 
     override fun getDefaults(): Subject = getOrCreateSubject("default")
 

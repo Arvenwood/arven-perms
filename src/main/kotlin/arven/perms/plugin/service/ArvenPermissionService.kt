@@ -3,13 +3,14 @@ package arven.perms.plugin.service
 import arven.perms.plugin.ArvenPerms.Companion.DB
 import arven.perms.plugin.database.SubjectCollectionEntity
 import arven.perms.plugin.database.SubjectCollectionTable
-import arven.perms.plugin.util.future
 import arven.perms.plugin.util.isNotEmpty
 import arven.perms.plugin.util.toTristate
 import com.google.common.base.Predicates
 import frontier.ske.java.util.unwrap
 import frontier.ske.java.util.wrap
 import frontier.ske.plugin.toPluginContainer
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -29,10 +30,13 @@ class ArvenPermissionService : PermissionService {
     override fun newSubjectReference(collectionIdentifier: String, subjectIdentifier: String): SubjectReference =
         ArvenSubjectReference(collectionIdentifier, subjectIdentifier)
 
-    override fun hasCollection(identifier: String): CompletableFuture<Boolean> =
-        SubjectCollectionTable.select {
-            (SubjectCollectionTable.identifier eq identifier)
-        }.isNotEmpty.future
+    override fun hasCollection(identifier: String): CompletableFuture<Boolean> = GlobalScope.future {
+        transaction(DB) {
+            SubjectCollectionTable.select {
+                (SubjectCollectionTable.identifier eq identifier)
+            }.isNotEmpty
+        }
+    }
 
     override fun getUserSubjects(): SubjectCollection {
         return getOrCreateCollection(PermissionService.SUBJECTS_USER)
@@ -49,8 +53,8 @@ class ArvenPermissionService : PermissionService {
             .wrap()
     }
 
-    override fun loadCollection(identifier: String): CompletableFuture<SubjectCollection> {
-        return getOrCreateCollection(identifier).future
+    override fun loadCollection(identifier: String): CompletableFuture<SubjectCollection> = GlobalScope.future {
+        getOrCreateCollection(identifier)
     }
 
     override fun getLoadedCollections(): Map<String, SubjectCollection> = transaction(DB) {
@@ -61,12 +65,13 @@ class ArvenPermissionService : PermissionService {
         map
     }
 
-    override fun getAllIdentifiers(): CompletableFuture<Set<String>> = transaction(DB) {
-        SubjectCollectionTable
-            .slice(SubjectCollectionTable.identifier)
-            .selectAll()
-            .mapTo(HashSet()) { it[SubjectCollectionTable.identifier] }
-            .future
+    override fun getAllIdentifiers(): CompletableFuture<Set<String>> = GlobalScope.future {
+        transaction(DB) {
+            SubjectCollectionTable
+                .slice(SubjectCollectionTable.identifier)
+                .selectAll()
+                .mapTo(HashSet()) { it[SubjectCollectionTable.identifier] }
+        }
     }
 
     override fun getDefaults(): Subject =
