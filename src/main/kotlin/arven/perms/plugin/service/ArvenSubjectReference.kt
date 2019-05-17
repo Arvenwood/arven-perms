@@ -1,12 +1,10 @@
 package arven.perms.plugin.service
 
 import arven.perms.plugin.ArvenPerms.Companion.DB
-import arven.perms.plugin.database.SubjectCollectionTable
+import arven.perms.plugin.database.SubjectCollectionEntity
 import arven.perms.plugin.database.SubjectEntity
-import arven.perms.plugin.database.SubjectTable
-import arven.perms.plugin.util.future
-import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.select
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.spongepowered.api.service.permission.Subject
 import org.spongepowered.api.service.permission.SubjectReference
@@ -19,21 +17,12 @@ class ArvenSubjectReference(private val collectionIdentifier: String,
 
     override fun getSubjectIdentifier(): String = subjectIdentifier
 
-    override fun resolve(): CompletableFuture<Subject?> =
-        transaction(DB) {
-            val row = SubjectTable.innerJoin(SubjectCollectionTable)
-                .slice(SubjectTable.id, SubjectTable.identifier, SubjectCollectionTable.id, SubjectCollectionTable.identifier)
-                .select {
-                    (SubjectTable.collection eq SubjectCollectionTable.id) and
-                            (SubjectTable.identifier eq subjectIdentifier) and
-                            (SubjectCollectionTable.identifier eq collectionIdentifier)
-                }.singleOrNull() ?: return@transaction null.future
-
-            ArvenSubject(
-                collection = ArvenSubjectCollection(id = row[SubjectCollectionTable.id], identifier = row[SubjectCollectionTable.identifier]),
-                id = row[SubjectTable.id],
-                identifier = row[SubjectTable.identifier]
-            ).future
+    override fun resolve(): CompletableFuture<Subject> =
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectEntity.getOrCreate(SubjectCollectionEntity.getOrCreate(collectionIdentifier), subjectIdentifier)
+                    .toSponge()
+            }
         }
 }
 

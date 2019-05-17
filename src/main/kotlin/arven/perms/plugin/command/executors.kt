@@ -1,4 +1,4 @@
-package arven.perms.plugin.util
+package arven.perms.plugin.command
 
 import arven.perms.plugin.ArvenPerms.Companion.DB
 import frontier.skpc.CommandValueExecutor
@@ -6,17 +6,12 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.spongepowered.api.command.CommandResult
 
-inline fun <T> transactional(
+inline fun <Source, Value> transactional(
     database: Database = DB,
-    crossinline block: (T) -> Unit
-): CommandValueExecutor<in T> = {
+    crossinline block: CommandValueExecutor<Source, Value>
+): CommandValueExecutor<Source, Value> = { src, value ->
     transaction(database) {
-        block(it)
+        block(src, value)
         CommandResult.success()
     }
-}
-
-inline fun <T> noReturn(crossinline block: (T) -> Unit): CommandValueExecutor<in T> = {
-    block(it)
-    CommandResult.success()
 }

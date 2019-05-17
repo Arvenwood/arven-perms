@@ -6,9 +6,10 @@ import arven.perms.plugin.database.SubjectCollectionTable
 import arven.perms.plugin.util.isNotEmpty
 import arven.perms.plugin.util.toTristate
 import com.google.common.base.Predicates
-import frontier.ske.java.util.unwrap
-import frontier.ske.java.util.wrap
-import frontier.ske.plugin.toPluginContainer
+import frontier.ske.plugin.get
+import frontier.ske.pluginManager
+import frontier.ske.util.unwrap
+import frontier.ske.util.wrap
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.sql.select
@@ -17,6 +18,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.spongepowered.api.plugin.PluginContainer
 import org.spongepowered.api.service.context.ContextCalculator
 import org.spongepowered.api.service.permission.*
+import org.spongepowered.api.service.permission.PermissionService.*
 import org.spongepowered.api.text.Text
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -38,13 +40,11 @@ class ArvenPermissionService : PermissionService {
         }
     }
 
-    override fun getUserSubjects(): SubjectCollection {
-        return getOrCreateCollection(PermissionService.SUBJECTS_USER)
-    }
+    override fun getUserSubjects(): SubjectCollection =
+        ArvenSubjectCollection.fetch(SUBJECTS_USER)
 
-    override fun getGroupSubjects(): SubjectCollection {
-        return getOrCreateCollection(PermissionService.SUBJECTS_GROUP)
-    }
+    override fun getGroupSubjects(): SubjectCollection =
+        ArvenSubjectCollection.fetch(SUBJECTS_GROUP)
 
     override fun getCollection(identifier: String): Optional<SubjectCollection> = transaction(DB) {
         SubjectCollectionEntity
@@ -54,7 +54,7 @@ class ArvenPermissionService : PermissionService {
     }
 
     override fun loadCollection(identifier: String): CompletableFuture<SubjectCollection> = GlobalScope.future {
-        getOrCreateCollection(identifier)
+        ArvenSubjectCollection.fetch(identifier)
     }
 
     override fun getLoadedCollections(): Map<String, SubjectCollection> = transaction(DB) {
@@ -75,7 +75,7 @@ class ArvenPermissionService : PermissionService {
     }
 
     override fun getDefaults(): Subject =
-        getOrCreateCollection(PermissionService.SUBJECTS_DEFAULT).getOrCreateSubject("default")
+        ArvenSubject.fetch(ArvenSubjectCollection.fetch(SUBJECTS_DEFAULT), "default")
 
     override fun newDescriptionBuilder(plugin: Any): PermissionDescription.Builder = ArvenDescriptionBuilder(plugin)
 
@@ -89,12 +89,6 @@ class ArvenPermissionService : PermissionService {
     override fun registerContextCalculator(calculator: ContextCalculator<Subject>) = Unit
 
     override fun getIdentifierValidityPredicate(): Predicate<String> = Predicates.alwaysTrue()
-
-    private fun getOrCreateCollection(identifier: String): ArvenSubjectCollection = transaction(DB) {
-        val entity = SubjectCollectionEntity.find(identifier)
-            ?: SubjectCollectionEntity.new { this.identifier = identifier }
-        ArvenSubjectCollection(entity.id, entity.identifier)
-    }
 
     private inner class ArvenDescriptionBuilder(private val plugin: Any) : PermissionDescription.Builder {
         private lateinit var permission: String
@@ -117,12 +111,13 @@ class ArvenPermissionService : PermissionService {
         }
 
         override fun register(): PermissionDescription {
-            val collection = getOrCreateCollection(PermissionService.SUBJECTS_ROLE_TEMPLATE)
+            val collection = ArvenSubjectCollection.fetch(SUBJECTS_ROLE_TEMPLATE)
             for ((role, value) in assigned) {
-                collection.getOrCreateSubject(role)
-                    .subjectData.setPermission(emptySet(), permission, value.toTristate())
+                ArvenSubject.fetch(collection, role)
+                    .subjectData
+                    .setPermission(emptySet(), permission, value.toTristate())
             }
-            return ArvenDescription(plugin.toPluginContainer(), permission, description)
+            return ArvenDescription(pluginManager[plugin], permission, description)
         }
     }
 

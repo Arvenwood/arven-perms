@@ -7,25 +7,25 @@ import arven.perms.plugin.database.SubjectEntity
 import arven.perms.plugin.database.SubjectOptionTable
 import arven.perms.plugin.database.SubjectPermissionTable
 import arven.perms.plugin.util.UI
-import arven.perms.plugin.util.transactional
+import arven.perms.plugin.util.unaryPlus
 import frontier.ske.commandManager
-import frontier.ske.service.pagination.contents
-import frontier.ske.service.pagination.padding
-import frontier.ske.service.pagination.pagination
-import frontier.ske.service.pagination.title
+import frontier.ske.service.contents
+import frontier.ske.service.padding
+import frontier.ske.service.pagination
+import frontier.ske.service.title
 import frontier.ske.text.not
 import frontier.ske.text.plus
-import frontier.ske.text.unaryPlus
 import frontier.skpc.CommandTree
+import frontier.skpc.permission
 import frontier.skpc.util.component1
 import frontier.skpc.util.component2
 import frontier.skpc.util.component3
-import frontier.skpc.util.component4
 import frontier.skpc.value.standard.ValueParameters.boolean
 import frontier.skpc.value.standard.ValueParameters.string
 import frontier.skpc.value.standard.optionalOr
 import org.jetbrains.exposed.sql.SizedCollection
 import org.jetbrains.exposed.sql.SortOrder
+import org.spongepowered.api.command.CommandResult
 import org.spongepowered.api.service.permission.PermissionService.SUBJECTS_GROUP
 import org.spongepowered.api.service.permission.PermissionService.SUBJECTS_USER
 import org.spongepowered.api.text.Text
@@ -33,11 +33,11 @@ import org.spongepowered.api.text.Text
 object APCommand {
 
     fun register(plugin: Any) {
-        val command = CommandTree.Root("ap", "aperms").apply {
-            "groups" expand {
+        val command = CommandTree.Root("ap", "aperms", permission = "arven.perms.base").apply {
+            ("groups" permission "arven.perms.group.base") expand {
 
-                "list" execute transactional { src ->
-                    val groups = SubjectCollectionEntity[SUBJECTS_GROUP].subjects.map {
+                ("list" permission "arven.perms.group.list") execute transactional { src, _ ->
+                    val groups = SubjectCollectionEntity.getOrCreate(SUBJECTS_GROUP).subjects.map {
                         val builder = Text.builder()
                         builder.append(+"&a${it.identifier} ")
 
@@ -69,20 +69,24 @@ object APCommand {
                         this.padding = +"&8="
                         this.contents = groups
                     }
+
+                    CommandResult.success()
                 }
             }
 
-            "group" expand {
+            ("group" permission "arven.perms.group.base") expand {
                 subjectEntityOf(SUBJECTS_GROUP)("group") expand {
 
-                    "delete" execute transactional { (group, src) ->
+                    ("delete" permission "arven.perms.group.delete") execute transactional { src, (group) ->
                         val name = group.identifier
 
                         group.delete()
                         src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6delete")
+
+                        CommandResult.success()
                     }
 
-                    "info" execute transactional { (group, src) ->
+                    ("info" permission "arven.perms.group.info") execute transactional { src, (group) ->
                         val permissionCount = group.permissions.count()
                         val optionCount = group.options.count()
                         val parentCount = group.parents.count()
@@ -106,18 +110,22 @@ object APCommand {
                                 )
                             )
                         }
+
+                        CommandResult.success()
                     }
 
-                    "options" expand {
+                    ("options" permission "arven.perms.group.option.base") expand {
 
-                        "clear" execute transactional { (group, src) ->
+                        ("clear" permission "arven.perms.group.option.clear") execute transactional { src, (group) ->
                             val name = group.identifier
 
                             group.clearOptions()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6options &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (group, src) ->
+                        ("list" permission "arven.perms.group.option.list") execute transactional { src, (group) ->
                             val options = group.options
                                 .orderBy(SubjectOptionTable.key to SortOrder.ASC)
                                 .map {
@@ -132,12 +140,14 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = options
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "option" / string("key") expand {
+                    ("option" permission "arven.perms.group.option.base") / string("key") expand {
 
-                        "check" execute transactional { (key, group, src) ->
+                        ("check" permission "arven.perms.group.option.check") execute transactional { src, (key, group) ->
                             val deep = group.getOption(key)
                             val value = when (deep?.second) {
                                 null -> "&fundefined"
@@ -155,35 +165,43 @@ object APCommand {
                             }
 
                             src.sendMessage(builder.build())
+
+                            CommandResult.success()
                         }
 
-                        "define" / string("value") execute transactional { (value, key, group, src) ->
+                        ("define" permission "arven.perms.group.option.define") / string("value") execute transactional { src, (value, key, group) ->
                             if (group.setOptionValue(key, value)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e${group.identifier} &8<- &6option &e$key &8<- &6define &e$value")
                             } else {
                                 src.sendMessage(+"&cFailed to set the option $key to $value &cfor group ${group.identifier}.")
                             }
+
+                            CommandResult.success()
                         }
 
-                        "undefine" execute transactional { (key, group, src) ->
+                        ("undefine" permission "arven.perms.group.option.undefine") execute transactional { src, (key, group) ->
                             if (group.setOptionValue(key, null)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e${group.identifier} &8<- &6option &e$key &8<- &6undefine")
                             } else {
                                 src.sendMessage(+"&cFailed to unset the option $key &cfor group ${group.identifier}.")
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "parents" expand {
+                    ("parents" permission "arven.perms.group.parent.base") expand {
 
-                        "clear" execute transactional { (group, src) ->
+                        ("clear" permission "arven.perms.group.parent.clear") execute transactional { src, (group) ->
                             val name = group.identifier
 
                             group.clearParents()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6parents &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (group, src) ->
+                        ("list" permission "arven.perms.group.parent.list") execute transactional { src, (group) ->
                             val parents = group.parents.map {
                                 val builder = Text.builder()
 
@@ -213,38 +231,46 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = parents
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "parent" / subjectEntityOf(SUBJECTS_GROUP)("parentGroup") expand {
+                    ("parent" permission "arven.perms.group.parent.base") / subjectEntityOf(SUBJECTS_GROUP)("parentGroup") expand {
 
-                        "add" execute transactional { (parent, group, src) ->
+                        ("add" permission "arven.perms.group.parent.add") execute transactional { src, (parent, group) ->
                             val parentName = parent.identifier
                             val name = group.identifier
 
                             group.parents = SizedCollection(group.parents + parent)
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6parent &e$parentName &8<- &6add")
+
+                            CommandResult.success()
                         }
 
-                        "remove" execute transactional { (parent, group, src) ->
+                        ("remove" permission "arven.perms.group.parent.remove") execute transactional { src, (parent, group) ->
                             val parentName = parent.identifier
                             val name = group.identifier
 
                             group.parents = SizedCollection(group.parents - parent)
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6parent &e$parentName &8<- &6remove")
+
+                            CommandResult.success()
                         }
                     }
 
-                    "permissions" expand {
+                    ("permissions" permission "arven.perms.group.permission.base") expand {
 
-                        "clear" execute transactional { (group, src) ->
+                        ("clear" permission "arven.perms.group.permission.clear") execute transactional { src, (group) ->
                             val name = group.identifier
 
                             group.clearPermissions()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6permissions &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (group, src) ->
+                        ("list" permission "arven.perms.group.permission.list") execute transactional { src, (group) ->
                             val permissions = group.permissions
                                 .orderBy(SubjectPermissionTable.permission to SortOrder.ASC)
                                 .map {
@@ -263,12 +289,14 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = permissions
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "permission" / string("permission") expand {
+                    ("permission" permission "arven.perms.group.permission.base") / string("permission") expand {
 
-                        "check" execute transactional { (permission, group, src) ->
+                        ("check" permission "arven.perms.group.permission.check") execute transactional { src, (permission, group) ->
                             val deep = group.getPermission(permission)
                             val value = when (deep?.third) {
                                 true  -> "&atrue"
@@ -290,9 +318,11 @@ object APCommand {
                             }
 
                             src.sendMessage(builder.build())
+
+                            CommandResult.success()
                         }
 
-                        "define" / boolean.optionalOr(true)("value") execute transactional { (value, permission, group, src) ->
+                        ("define" permission "arven.perms.group.permission.define") / boolean.optionalOr(true)("value") execute transactional { src, (value, permission, group) ->
                             val display = when (value) {
                                 true  -> "&atrue"
                                 false -> "&cfalse"
@@ -303,34 +333,42 @@ object APCommand {
                             } else {
                                 src.sendMessage(+"&cFailed to set the permission $permission to $value for group ${group.identifier}.")
                             }
+
+                            CommandResult.success()
                         }
 
-                        "undefine" execute transactional { (permission, group, src) ->
+                        ("undefine" permission "arven.perms.group.permission.undefine") execute transactional { src, (permission, group) ->
                             if (group.setPermissionValue(permission, null)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e${group.identifier} &8<- &6permission &e$permission &8<- &6undefine")
                             } else {
                                 src.sendMessage(+"&cFailed to unset the permission $permission for group ${group.identifier}.")
                             }
+
+                            CommandResult.success()
                         }
                     }
                 }
 
-                string("name") / "create" execute transactional { (name, src) ->
+                string("name") / ("create" permission "arven.perms.group.create") execute transactional { src, (name) ->
+                    val collectionEntity = SubjectCollectionEntity.getOrCreate(SUBJECTS_GROUP)
+
                     SubjectEntity.new {
                         this.identifier = name
-                        this.collection = SubjectCollectionEntity[SUBJECTS_GROUP]
+                        this.collection = collectionEntity
                         this.displayName = null
-                        this.weight = 0
+                        this.weight = collectionEntity.defaultWeight
                     }
 
                     src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6group &e$name &8<- &6create")
+
+                    CommandResult.success()
                 }
             }
 
-            "users" expand {
+            ("users" permission "arven.perms.user.base") expand {
 
-                "list" execute transactional { src ->
-                    val users = SubjectCollectionEntity[SUBJECTS_USER].subjects.map {
+                ("list" permission "arven.perms.user.list") execute transactional { src, _ ->
+                    val users = SubjectCollectionEntity.getOrCreate(SUBJECTS_USER).subjects.map {
                         val builder = Text.builder()
 
                         builder.append(
@@ -354,13 +392,15 @@ object APCommand {
                         this.padding = +"&8="
                         this.contents = users
                     }
+
+                    CommandResult.success()
                 }
             }
 
-            "user" expand {
+            ("user" permission "arven.perms.user.base") expand {
                 subjectEntityByDisplayNameOf(SUBJECTS_USER)("user") expand {
 
-                    "info" execute transactional { (user, src) ->
+                    ("info" permission "arven.perms.user.info") execute transactional { src, (user) ->
                         val permissionCount = user.permissions.count()
                         val optionCount = user.options.count()
                         val parentCount = user.parents.count()
@@ -383,15 +423,19 @@ object APCommand {
                                 )
                             )
                         }
+
+                        CommandResult.success()
                     }
 
-                    "options" expand {
-                        "clear" execute transactional { (user, src) ->
+                    ("options" permission "arven.perms.user.option.base") expand {
+                        ("clear" permission "arven.perms.user.option.clear") execute transactional { src, (user) ->
                             user.clearOptions()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6options &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (user, src) ->
+                        ("list" permission "arven.perms.user.option.list") execute transactional { src, (user) ->
                             val options = user.options
                                 .orderBy(SubjectOptionTable.key to SortOrder.ASC)
                                 .map {
@@ -406,12 +450,14 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = options
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "option" / string("key") expand {
+                    ("option" permission "arven.perms.user.option.base") / string("key") expand {
 
-                        "check" execute transactional { (key, user, src) ->
+                        ("check" permission "arven.perms.user.option.check") execute transactional { src, (key, user) ->
                             val deep = user.getOption(key)
                             val value = when (deep?.second) {
                                 null -> "&fundefined"
@@ -429,33 +475,41 @@ object APCommand {
                             }
 
                             src.sendMessage(builder.build())
+
+                            CommandResult.success()
                         }
 
-                        "define" / string("value") execute transactional { (value, key, user, src) ->
+                        ("define" permission "arven.perms.user.option.define") / string("value") execute transactional { src, (value, key, user) ->
                             if (user.setOptionValue(key, value)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6option &e$key &8<- &6define &e$value")
                             } else {
                                 src.sendMessage(+"&cFailed to set the option $key to $value &cfor user ${user.displayName}.")
                             }
+
+                            CommandResult.success()
                         }
 
-                        "undefine" execute transactional { (key, user, src) ->
+                        ("undefine" permission "arven.perms.user.option.undefine") execute transactional { src, (key, user) ->
                             if (user.setOptionValue(key, null)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6option &e$key &8<- &6undefine")
                             } else {
                                 src.sendMessage(+"&cFailed to unset the option $key &cfor user ${user.displayName}.")
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "parents" expand {
+                    ("parents" permission "arven.perms.user.parent.base") expand {
 
-                        "clear" execute transactional { (user, src) ->
+                        ("clear" permission "arven.perms.user.parent.clear") execute transactional { src, (user) ->
                             user.clearParents()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6parents &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (user, src) ->
+                        ("list" permission "arven.perms.user.parent.list") execute transactional { src, (user) ->
                             val parents = user.parents.map {
                                 val builder = Text.builder()
 
@@ -485,30 +539,38 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = parents
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "parent" / subjectEntityOf(SUBJECTS_GROUP)("group") expand {
+                    ("parent" permission "arven.perms.user.parent.base") / subjectEntityOf(SUBJECTS_GROUP)("group") expand {
 
-                        "add" execute transactional { (parent, user, src) ->
+                        ("add" permission "arven.perms.user.parent.add") execute transactional { src, (parent, user) ->
                             user.parents = SizedCollection(user.parents + parent)
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6parent &e${parent.identifier} &8<- &6add")
+
+                            CommandResult.success()
                         }
 
-                        "remove" execute transactional { (parent, user, src) ->
+                        ("remove" permission "arven.perms.user.parent.remove") execute transactional { src, (parent, user) ->
                             user.parents = SizedCollection(user.parents - parent)
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6parent &e${parent.identifier} &8<- &6remove")
+
+                            CommandResult.success()
                         }
                     }
 
-                    "permissions" expand {
+                    ("permissions" permission "arven.perms.user.permission.base") expand {
 
-                        "clear" execute transactional { (user, src) ->
+                        ("clear" permission "arven.perms.user.permission.clear") execute transactional { src, (user) ->
                             user.clearPermissions()
                             src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6permissions &8<- &6clear")
+
+                            CommandResult.success()
                         }
 
-                        "list" execute transactional { (user, src) ->
+                        ("list" permission "arven.perms.user.permission.list") execute transactional { src, (user) ->
                             val permissions = user.permissions
                                 .orderBy(SubjectPermissionTable.permission to SortOrder.ASC)
                                 .map {
@@ -527,12 +589,14 @@ object APCommand {
                                 this.padding = +"&8="
                                 this.contents = permissions
                             }
+
+                            CommandResult.success()
                         }
                     }
 
-                    "permission" / string("permission") expand {
+                    ("permission" permission "arven.perms.user.permission.base") / string("permission") expand {
 
-                        "check" execute transactional { (permission, user, src) ->
+                        ("check" permission "arven.perms.user.permission.check") execute transactional { src, (permission, user) ->
                             val deep = user.getPermission(permission)
                             val value = when (deep?.third) {
                                 true  -> "&atrue"
@@ -554,9 +618,11 @@ object APCommand {
                             }
 
                             src.sendMessage(builder.build())
+
+                            CommandResult.success()
                         }
 
-                        "define" / boolean.optionalOr(true)("value") execute transactional { (value, permission, user, src) ->
+                        ("define" permission "arven.perms.user.permission.define") / boolean.optionalOr(true)("value") execute transactional { src, (value, permission, user) ->
                             val display = when (value) {
                                 true  -> "&atrue"
                                 false -> "&cfalse"
@@ -567,14 +633,18 @@ object APCommand {
                             } else {
                                 src.sendMessage(+"&cFailed to set the permission $permission to $value for user ${user.displayName}.")
                             }
+
+                            CommandResult.success()
                         }
 
-                        "undefine" execute transactional { (permission, user, src) ->
+                        ("undefine" permission "arven.perms.user.permission.undefine") execute transactional { src, (permission, user) ->
                             if (user.setPermissionValue(permission, null)) {
                                 src.sendMessage(+"&2A&aPerms &8(&b${src.name}&8) | &6user &e${user.displayName} &8<- &6permission &e$permission &8<- &6undefine")
                             } else {
                                 src.sendMessage(+"&cFailed to unset the permission $permission for user ${user.displayName}.")
                             }
+
+                            CommandResult.success()
                         }
                     }
                 }

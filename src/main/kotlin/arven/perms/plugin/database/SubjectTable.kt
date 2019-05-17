@@ -1,12 +1,16 @@
 package arven.perms.plugin.database
 
+import arven.perms.plugin.service.ArvenSubject
 import arven.perms.plugin.util.collectAllGuarded
+import arven.perms.plugin.util.isNotEmpty
 import arven.perms.plugin.util.toTreeList
 import org.jetbrains.exposed.dao.EntityID
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.LongIdTable
 import org.jetbrains.exposed.sql.*
+import org.spongepowered.api.service.permission.Subject
+import org.spongepowered.api.service.permission.SubjectCollection
 
 object SubjectTable : LongIdTable("subjects") {
     val identifier = varchar("identifier", 128).index()
@@ -17,13 +21,35 @@ object SubjectTable : LongIdTable("subjects") {
     init {
         uniqueIndex(identifier, collection)
     }
+
+    fun has(collectionId: EntityID<Int>, identifier: String): Boolean =
+        SubjectTable.select {
+            (SubjectTable.collection eq collectionId) and
+                    (SubjectTable.identifier eq identifier)
+        }.isNotEmpty
+
+    fun has(collectionIdentifier: String, identifier: String): Boolean =
+        SubjectTable.innerJoin(SubjectCollectionTable).select {
+            (SubjectTable.collection eq SubjectCollectionTable.id) and
+                    (SubjectCollectionTable.identifier eq collectionIdentifier) and
+                    (SubjectTable.identifier eq identifier)
+        }.isNotEmpty
+
+    fun <C : MutableCollection<in String>> allIdentifiers(collectionId: EntityID<Int>, destination: C): C =
+        SubjectTable.slice(SubjectTable.identifier)
+            .select { SubjectTable.collection eq collectionId }
+            .mapTo(destination) { it[SubjectTable.identifier] }
 }
 
 class SubjectEntity(id: EntityID<Long>) : LongEntity(id) {
     companion object : LongEntityClass<SubjectEntity>(SubjectTable) {
-        fun find(collectionId: EntityID<Int>, identifier: String): SubjectEntity? = find {
-            (SubjectTable.collection eq collectionId) and (SubjectTable.identifier eq identifier)
-        }.singleOrNull()
+
+        fun all(collectionId: EntityID<Int>): SizedIterable<SubjectEntity> =
+            find { (SubjectTable.collection eq collectionId) }
+
+        fun find(collectionId: EntityID<Int>, identifier: String): SubjectEntity? =
+            find { (SubjectTable.collection eq collectionId) and (SubjectTable.identifier eq identifier) }
+                .singleOrNull()
 
         fun find(collectionIdentifier: String, subjectIdentifier: String): SubjectEntity? {
             val row = SubjectTable.innerJoin(SubjectCollectionTable)
@@ -52,6 +78,15 @@ class SubjectEntity(id: EntityID<Long>) : LongEntity(id) {
 
             return row?.let { wrapRow(it) }
         }
+
+        fun getOrCreate(collection: SubjectCollectionEntity, identifier: String): SubjectEntity =
+            find(collection.id, identifier)
+                ?: new {
+                    this.identifier = identifier
+                    this.collection = collection
+                    this.displayName = null
+                    this.weight = collection.defaultWeight
+                }
     }
 
     var identifier by SubjectTable.identifier
@@ -202,6 +237,10 @@ class SubjectEntity(id: EntityID<Long>) : LongEntity(id) {
             else                            -> false
         }
     }
-}
 
-val SubjectEntity.display: String get() = this.displayName ?: this.identifier
+    val display: String get() = this.displayName ?: this.identifier
+
+    fun toSponge(): Subject = ArvenSubject(this.collection.toSponge(), this.id, this.identifier)
+
+    fun toSponge(collection: SubjectCollection): ArvenSubject = ArvenSubject(collection, this.id, this.identifier)
+}

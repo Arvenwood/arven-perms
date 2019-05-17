@@ -2,9 +2,8 @@ package arven.perms.plugin.service
 
 import arven.perms.plugin.ArvenPerms.Companion.DB
 import arven.perms.plugin.database.*
-import arven.perms.plugin.util.isNotEmpty
 import com.google.common.base.Predicates
-import frontier.ske.java.util.wrap
+import frontier.ske.util.wrap
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.dao.EntityID
@@ -22,7 +21,14 @@ import kotlin.collections.HashSet
 
 class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifier: String) : SubjectCollection {
 
-    private val entity: SubjectCollectionEntity
+    companion object {
+        fun fetch(identifier: String): ArvenSubjectCollection =
+            transaction(DB) {
+                SubjectCollectionEntity.getOrCreate(identifier).toSponge()
+            }
+    }
+
+    internal val entity: SubjectCollectionEntity
         get() = SubjectCollectionEntity[id]
 
     override fun getIdentifier(): String = identifier
@@ -87,67 +93,68 @@ class ArvenSubjectCollection(private val id: EntityID<Int>, private val identifi
             map
         }
 
-    override fun hasSubject(identifier: String): CompletableFuture<Boolean> = GlobalScope.future {
-        transaction(DB) {
-            SubjectTable
-                .select { (SubjectTable.collection eq id) and (SubjectTable.identifier eq identifier) }
-                .isNotEmpty
+    override fun hasSubject(identifier: String): CompletableFuture<Boolean> =
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectTable.has(this@ArvenSubjectCollection.id, identifier)
+            }
         }
-    }
 
     override fun getSubject(identifier: String): Optional<Subject> =
         transaction(DB) {
             SubjectEntity.find(id, identifier)
-                ?.let { ArvenSubject(this@ArvenSubjectCollection, it.id, it.identifier) }
+                ?.toSponge(this@ArvenSubjectCollection)
                 .wrap()
         }
 
-    override fun loadSubject(identifier: String): CompletableFuture<Subject> = GlobalScope.future {
-        getOrCreateSubject(identifier)
-    }
-
-    override fun loadSubjects(identifiers: Set<String>): CompletableFuture<Map<String, Subject>> = GlobalScope.future {
-        transaction(DB) {
-            val map = hashMapOf<String, Subject>()
-
-            for (identifier in identifiers) {
-                map[identifier] = getOrCreateSubject(identifier)
+    override fun loadSubject(identifier: String): CompletableFuture<Subject> =
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectEntity.getOrCreate(entity, identifier)
+                    .toSponge(this@ArvenSubjectCollection)
             }
-
-            map
         }
-    }
+
+    override fun loadSubjects(identifiers: Set<String>): CompletableFuture<Map<String, Subject>> =
+        GlobalScope.future {
+            transaction(DB) {
+                val map = hashMapOf<String, Subject>()
+
+                for (identifier in identifiers) {
+                    map[identifier] = SubjectEntity.getOrCreate(entity, identifier)
+                        .toSponge(this@ArvenSubjectCollection)
+                }
+
+                map
+            }
+        }
 
     override fun getLoadedSubjects(): Collection<Subject> =
         transaction(DB) {
-            SubjectEntity
-                .find { (SubjectTable.collection eq id) }
-                .map { ArvenSubject(this@ArvenSubjectCollection, it.id, it.identifier) }
+            SubjectEntity.all(id)
+                .map { it.toSponge(this@ArvenSubjectCollection) }
         }
 
-    override fun getAllIdentifiers(): CompletableFuture<Set<String>> = GlobalScope.future {
+    override fun getAllIdentifiers(): CompletableFuture<Set<String>> =
+        GlobalScope.future {
+            transaction(DB) {
+                SubjectTable.allIdentifiers(id, HashSet())
+            }
+        }
+
+    override fun getDefaults(): Subject =
         transaction(DB) {
-            SubjectTable
-                .slice(SubjectTable.identifier)
-                .select { SubjectTable.collection eq id }
-                .mapTo(HashSet()) { it[SubjectTable.identifier] }
+            SubjectEntity.getOrCreate(entity, "default")
+                .toSponge(this@ArvenSubjectCollection)
         }
-    }
-
-    override fun getDefaults(): Subject = getOrCreateSubject("default")
 
     /**
      * NOOP
      */
     override fun suggestUnload(identifier: String) = Unit
 
-    internal fun getOrCreateSubject(identifier: String): Subject = transaction(DB) {
-        val entity = SubjectEntity.find(id, identifier)
-            ?: SubjectEntity.new {
-                this.identifier = identifier
-                this.collection = entity
-                this.displayName = ""
-            }
-        ArvenSubject(this@ArvenSubjectCollection, entity.id, entity.identifier)
-    }
+    internal fun getOrCreateSubject(identifier: String): Subject =
+        transaction(DB) {
+            SubjectEntity.getOrCreate(entity, identifier).toSponge(this@ArvenSubjectCollection)
+        }
 }

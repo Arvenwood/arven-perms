@@ -4,9 +4,10 @@ import arven.perms.plugin.ArvenPerms.Companion.DB
 import arven.perms.plugin.database.*
 import arven.perms.plugin.util.toBoolean
 import arven.perms.plugin.util.toTristate
-import frontier.ske.java.lang.toUUID
-import frontier.ske.java.util.wrap
 import frontier.ske.server
+import frontier.ske.util.toUUID
+import frontier.ske.util.unwrap
+import frontier.ske.util.wrap
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.future.future
 import org.jetbrains.exposed.dao.EntityID
@@ -25,10 +26,17 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 
 class ArvenSubject(
-    private val collection: ArvenSubjectCollection,
+    private val collection: SubjectCollection,
     private val id: EntityID<Long>,
     private val identifier: String
 ) : Subject, SubjectData {
+
+    companion object {
+        fun fetch(collection: ArvenSubjectCollection, identifier: String): ArvenSubject =
+            transaction(DB) {
+                SubjectEntity.getOrCreate(collection.entity, identifier).toSponge(collection)
+            }
+    }
 
     private val subjectEntity: SubjectEntity
         get() = SubjectEntity[id]
@@ -37,7 +45,7 @@ class ArvenSubject(
         identifier
 
     override fun getFriendlyIdentifier(): Optional<String> =
-        subjectEntity.displayName.wrap()
+        Optional.ofNullable(transaction(DB) { subjectEntity.identifier })
 
     override fun getContainingCollection(): SubjectCollection =
         collection
@@ -45,9 +53,12 @@ class ArvenSubject(
     override fun asSubjectReference(): SubjectReference =
         ArvenSubjectReference(collection.identifier, identifier)
 
-    override fun getCommandSource(): Optional<CommandSource> = runCatching {
-        server.getPlayer(identifier.toUUID()).map { it as CommandSource }
-    }.getOrElse { Optional.empty() }
+    override fun getCommandSource(): Optional<CommandSource> =
+        try {
+            server.getPlayer(identifier.toUUID()).map { it as? CommandSource }.unwrap().wrap()
+        } catch (ignored: Exception) {
+            Optional.empty()
+        }
 
     //
     // Permissions
@@ -61,45 +72,15 @@ class ArvenSubject(
     override fun setPermission(ctx: Set<Context>, permission: String, value: Tristate): CompletableFuture<Boolean> =
         GlobalScope.future {
             transaction(DB) {
-                val entity = SubjectPermissionEntity.find {
-                    (SubjectPermissionTable.subject eq id) and (SubjectPermissionTable.permission eq permission)
-                }.singleOrNull()
-                val boolValue = value.toBoolean()
-
-                when {
-                    entity == null && boolValue != null -> {
-                        SubjectPermissionEntity.new {
-                            this.subject = subjectEntity
-                            this.permission = permission
-                            this.value = boolValue
-                        }
-                        true
-                    }
-                    entity != null && boolValue != null -> {
-                        entity.value = boolValue
-                        true
-                    }
-                    entity != null && boolValue == null -> {
-                        entity.delete()
-                        true
-                    }
-                    else                                -> false
-                }
+                subjectEntity.setPermissionValue(permission, value.toBoolean())
             }
         }
 
     override fun getPermissions(ctx: Set<Context>): Map<String, Boolean> =
         transaction(DB) {
-            val entities = SubjectPermissionEntity.find {
-                (SubjectPermissionTable.subject eq id)
+            subjectEntity.permissions.associate { entity ->
+                entity.permission to entity.value
             }
-            val map = hashMapOf<String, Boolean>()
-
-            for (entity in entities) {
-                map[entity.permission] = entity.value
-            }
-
-            map
         }
 
     override fun getAllPermissions(): Map<Set<Context>, Map<String, Boolean>> {

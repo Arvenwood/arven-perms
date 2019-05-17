@@ -3,8 +3,8 @@ package arven.perms.plugin.util
 import frontier.ske.text.aqua
 import frontier.ske.text.red
 import frontier.ske.text.runCommand
+import frontier.ske.text.showText
 import org.spongepowered.api.text.Text
-import org.spongepowered.api.text.action.TextActions
 
 object UI {
 
@@ -13,15 +13,15 @@ object UI {
         private val btnView = Text.builder("[...]").aqua()
 
         fun delete(command: String): Text =
-            btnDelete.runCommand(command)
+            btnDelete.runCommand(command).build()
 
         fun delete(command: String, hover: Text): Text =
-            btnDelete.onHover(TextActions.showText(hover)).runCommand(command)
+            btnDelete.runCommand(command).showText(hover).build()
 
         fun view(command: String): Text =
-            btnView.runCommand(command)
+            btnView.runCommand(command).build()
 
         fun view(command: String, hover: Text): Text =
-            btnView.onHover(TextActions.showText(hover)).runCommand(command)
+            btnView.runCommand(command).showText(hover).build()
     }
 }

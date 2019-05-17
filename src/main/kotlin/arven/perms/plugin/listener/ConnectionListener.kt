@@ -17,7 +17,7 @@ class ConnectionListener {
     @Listener(order = Order.PRE)
     fun onJoin(event: ClientConnectionEvent.Join, @Getter("getTargetEntity") player: Player) {
         transaction(DB) {
-            val collectionEntity = SubjectCollectionEntity[SUBJECTS_USER]
+            val collectionEntity = SubjectCollectionEntity.getOrCreate(SUBJECTS_USER)
             val entity = SubjectEntity.find(collectionEntity.id, player.uniqueId.toString())
 
             if (entity == null) {
@@ -27,6 +27,7 @@ class ConnectionListener {
                     this.identifier = player.uniqueId.toString()
                     this.collection = collectionEntity
                     this.displayName = player.name
+                    this.weight = collectionEntity.defaultWeight
                 }
             }
         }
