@@ -24,10 +24,10 @@ import org.spongepowered.api.service.permission.PermissionService
 import org.spongepowered.api.service.sql.SqlService
 
 @Plugin(
-    id = "arven-perms", name = "Arven Perms", version = "0.1.0",
+    id = "arven-perms", name = "Arven Perms", version = "0.3.1",
     authors = ["doot"], url = "https://github.com/Arvenwood/arven-perms",
     description = "A Permissions plugin.",
-    dependencies = [Dependency(id = "arven-core", version = "1.0.0")]
+    dependencies = [Dependency(id = "arven-core", version = "0.3.0")]
 )
 class ArvenPerms @Inject constructor(logger: Logger) {
 
